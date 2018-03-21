@@ -16,14 +16,12 @@
  */
 package org.jboss.as.quickstarts.ejb.remote.client;
 
-import org.jboss.as.quickstarts.ejb.remote.stateful.RemoteCounter;
-import org.jboss.as.quickstarts.ejb.remote.stateless.RemoteCalculator;
+import java.util.Hashtable;
 
 import javax.naming.Context;
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
-
-import java.util.Hashtable;
+import org.jboss.as.quickstarts.ejb.remote.stateless.RemoteCalculator;
 
 /**
  * A sample program which acts a remote client for a EJB deployed on JBoss EAP server. This program shows how to lookup stateful and
@@ -33,12 +31,16 @@ import java.util.Hashtable;
  */
 public class RemoteEJBClient {
 
-    public static void main(String[] args) throws Exception {
+
+	private static final String REMOTE_HTTP_ENDPOINT = "remote+http://mysample-rmi-test.1d35.starter-us-east-1.openshiftapps.com:80";
+	//private static final String REMOTE_HTTP_ENDPOINT = "remote+http://test5-rmi-test.1d35.starter-us-east-1.openshiftapps.com:80";
+    private static final String REMOTE_SSL_HOST = "ssl-mysample-rmi-test.1d35.starter-us-east-1.openshiftapps.com";
+
+    private static final String REMOTE_TLS_ENDPOINT = "remote://"+REMOTE_SSL_HOST+":443";
+
+	public static void main(String[] args) throws Exception {
         // Invoke a stateless bean
         invokeStatelessBean();
-
-        // Invoke a stateful bean
-        invokeStatefulBean();
     }
 
     /**
@@ -74,31 +76,45 @@ public class RemoteEJBClient {
     }
 
     /**
-     * Looks up a stateful bean and invokes on it
+     * Looks up and returns the proxy to remote stateless calculator bean
      *
+     * @return
      * @throws NamingException
      */
-    private static void invokeStatefulBean() throws NamingException {
-        // Let's lookup the remote stateful counter
-        final RemoteCounter statefulRemoteCounter = lookupRemoteStatefulCounter();
-        System.out.println("Obtained a remote stateful counter for invocation");
-        // invoke on the remote counter bean
-        final int NUM_TIMES = 5;
-        System.out.println("Counter will now be incremented " + NUM_TIMES + " times");
-        for (int i = 0; i < NUM_TIMES; i++) {
-            System.out.println("Incrementing counter");
-            statefulRemoteCounter.increment();
-            System.out.println("Count after increment is " + statefulRemoteCounter.getCount());
-        }
-        // now decrementing
-        System.out.println("Counter will now be decremented " + NUM_TIMES + " times");
-        for (int i = NUM_TIMES; i > 0; i--) {
-            System.out.println("Decrementing counter");
-            statefulRemoteCounter.decrement();
-            System.out.println("Count after decrement is " + statefulRemoteCounter.getCount());
-        }
-    }
+    private static RemoteCalculator lookupRemoteStatelessCalculatorOverSSL() throws NamingException {
+        final Hashtable<String, String> jndiProperties = new Hashtable<>();
+        jndiProperties.put(Context.INITIAL_CONTEXT_FACTORY, "org.wildfly.naming.client.WildFlyInitialContextFactory");
+        //jndiProperties.put(Context.PROVIDER_URL,REMOTE_HTTPS_ENDPOINT);
+        jndiProperties.put(Context.SECURITY_PRINCIPAL, "user1");
+        jndiProperties.put(Context.SECURITY_CREDENTIALS, "password1");
+     
+        jndiProperties.put("remote.connections", "default");
+        jndiProperties.put("remote.connection.default.host", REMOTE_SSL_HOST);
+        jndiProperties.put("remote.connection.default.port", "443");
+        jndiProperties.put(
+				"remote.connection.default.connect.options.org.xnio.Options.SASL_POLICY_NOPLAINTEXT",
+				"false");
+        
+        jndiProperties.put(
+				"remote.connection.default.connect.options.org.xnio.Options.SASL_POLICY_NOANONYMOUS",
+				"false");
+      
+        jndiProperties.put(
+				"remote.connectionprovider.create.options.org.xnio.Options.SSL_ENABLED",
+				"true");
+        jndiProperties.put(
+				"remote.connection.default.connect.options.org.xnio.Options.SSL_ENABLED",
+				"true");
+        jndiProperties.put(
+				"remote.connection.default.connect.options.org.xnio.Options.SSL_STARTTLS",
+				"true");
+        final Context context = new InitialContext(jndiProperties);
 
+        // let's do the lookup
+        return (RemoteCalculator) context.lookup("ejb:/ejb-remote-server-side/CalculatorBean!"
+            + RemoteCalculator.class.getName());
+    }
+    
     /**
      * Looks up and returns the proxy to remote stateless calculator bean
      *
@@ -108,65 +124,15 @@ public class RemoteEJBClient {
     private static RemoteCalculator lookupRemoteStatelessCalculator() throws NamingException {
         final Hashtable<String, String> jndiProperties = new Hashtable<>();
         jndiProperties.put(Context.INITIAL_CONTEXT_FACTORY, "org.wildfly.naming.client.WildFlyInitialContextFactory");
-        jndiProperties.put(Context.PROVIDER_URL,"remote+http://localhost:8080");
+        jndiProperties.put(Context.PROVIDER_URL,REMOTE_HTTP_ENDPOINT);
+        jndiProperties.put(Context.SECURITY_PRINCIPAL, "user1");
+        jndiProperties.put(Context.SECURITY_CREDENTIALS, "password1");
+  
         final Context context = new InitialContext(jndiProperties);
-
-        // The JNDI lookup name for a stateless session bean has the syntax of:
-        // ejb:<appName>/<moduleName>/<distinctName>/<beanName>!<viewClassName>
-        //
-        // <appName> The application name is the name of the EAR that the EJB is deployed in
-        // (without the .ear). If the EJB JAR is not deployed in an EAR then this is
-        // blank. The app name can also be specified in the EAR's application.xml
-        //
-        // <moduleName> By the default the module name is the name of the EJB JAR file (without the
-        // .jar suffix). The module name might be overridden in the ejb-jar.xml
-        //
-        // <distinctName> : EAP allows each deployment to have an (optional) distinct name.
-        // This example does not use this so leave it blank.
-        //
-        // <beanName> : The name of the session been to be invoked.
-        //
-        // <viewClassName>: The fully qualified classname of the remote interface. Must include
-        // the whole package name.
 
         // let's do the lookup
         return (RemoteCalculator) context.lookup("ejb:/ejb-remote-server-side/CalculatorBean!"
             + RemoteCalculator.class.getName());
     }
-
-    /**
-     * Looks up and returns the proxy to remote stateful counter bean
-     *
-     * @return
-     * @throws NamingException
-     */
-    private static RemoteCounter lookupRemoteStatefulCounter() throws NamingException {
-        final Hashtable<String, String> jndiProperties = new Hashtable<>();
-        //jndiProperties.put(Context.URL_PKG_PREFIXES, "org.jboss.ejb.client.naming");
-        jndiProperties.put(Context.INITIAL_CONTEXT_FACTORY, "org.wildfly.naming.client.WildFlyInitialContextFactory");
-        jndiProperties.put(Context.PROVIDER_URL,"remote+http://localhost:8080");
-        final Context context = new InitialContext(jndiProperties);
-
-        // The JNDI lookup name for a stateful session bean has the syntax of:
-        // ejb:<appName>/<moduleName>/<distinctName>/<beanName>!<viewClassName>?stateful
-        //
-        // <appName> The application name is the name of the EAR that the EJB is deployed in
-        // (without the .ear). If the EJB JAR is not deployed in an EAR then this is
-        // blank. The app name can also be specified in the EAR's application.xml
-        //
-        // <moduleName> By the default the module name is the name of the EJB JAR file (without the
-        // .jar suffix). The module name might be overridden in the ejb-jar.xml
-        //
-        // <distinctName> : EAP allows each deployment to have an (optional) distinct name.
-        // This example does not use this so leave it blank.
-        //
-        // <beanName> : The name of the session been to be invoked.
-        //
-        // <viewClassName>: The fully qualified classname of the remote interface. Must include
-        // the whole package name.
-
-        // let's do the lookup
-        return (RemoteCounter) context.lookup("ejb:/ejb-remote-server-side/CounterBean!"
-            + RemoteCounter.class.getName() + "?stateful");
-    }
+    
 }
